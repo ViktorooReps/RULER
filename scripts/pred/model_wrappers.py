@@ -20,30 +20,57 @@ from typing import Dict, List, Optional
 
 
 class HuggingFaceModel:
-    def __init__(self, name_or_path: str, **generation_kwargs) -> None:
-        from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+    def __init__(self, name_or_path: str, use_flash: bool = True, **generation_kwargs) -> None:
+        from transformers import pipeline
 
-        self.tokenizer = AutoTokenizer.from_pretrained(name_or_path, trust_remote_code=True)
+        if 'landmark' in name_or_path:
+            from llama_mem import LlamaForCausalLM
 
-        if 'Yarn-Llama' in name_or_path:
-            model_kwargs = None
-        else:
-            model_kwargs = {"attn_implementation": "flash_attention_2"}
-        
-        try:
+            model = LlamaForCausalLM.from_pretrained(
+                name_or_path,
+                cache_dir='la_cache',
+                torch_dtype=torch.bfloat16
+            )
+
+            model.to('cpu')
+
+            mem_id = self.tokenizer.convert_tokens_to_ids("<landmark>")
+            model.set_mem_id(mem_id)
+
+            # using flash for inference is only implemented for when offloading kv to cpu
             self.pipeline = pipeline(
                 "text-generation",
-                model=name_or_path,
+                model=model,
                 tokenizer=self.tokenizer,
-                trust_remote_code=True,
-                device_map="auto",
-                torch_dtype=torch.bfloat16,
-                model_kwargs=model_kwargs,
+                device=model.device,
+                offload_cache_to_cpu=use_flash, use_flash=use_flash,
+                cache_top_k=generation_kwargs.get('top_k', 5)
             )
-        except:
-            self.pipeline = None
-            self.model = AutoModelForCausalLM.from_pretrained(name_or_path, trust_remote_code=True, device_map="auto", torch_dtype=torch.bfloat16,)
-            
+        else:
+            from transformers import AutoTokenizer, AutoModelForCausalLM
+
+            self.tokenizer = AutoTokenizer.from_pretrained(name_or_path, trust_remote_code=True)
+
+            if 'Yarn-Llama' in name_or_path:
+                model_kwargs = None
+            else:
+                model_kwargs = {"attn_implementation": "flash_attention_2"}
+
+            try:
+                self.pipeline = pipeline(
+                    "text-generation",
+                    model=name_or_path,
+                    tokenizer=self.tokenizer,
+                    trust_remote_code=True,
+                    device_map="auto",
+                    torch_dtype=torch.bfloat16,
+                    model_kwargs=model_kwargs,
+                )
+            except:
+                self.pipeline = None
+                self.model = AutoModelForCausalLM.from_pretrained(name_or_path, trust_remote_code=True,
+                                                                  device_map="auto", torch_dtype=torch.bfloat16, )
+
         self.generation_kwargs = generation_kwargs
         self.stop = self.generation_kwargs.pop('stop')
 
@@ -56,14 +83,14 @@ class HuggingFaceModel:
             )
             generated_text = self.tokenizer.decode(output[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
         else:
-            output = self.pipeline(text_inputs=prompt, **self.generation_kwargs,)
+            output = self.pipeline(text_inputs=prompt, **self.generation_kwargs, )
             assert len(output) == 1
             generated_text = output[0]["generated_text"]
-            
+
         # remove the input form the generated text
         if generated_text.startswith(prompt):
-            generated_text = generated_text[len(prompt) :]
-                
+            generated_text = generated_text[len(prompt):]
+
         if self.stop is not None:
             for s in self.stop:
                 generated_text = generated_text.split(s)[0]
@@ -101,4 +128,4 @@ class MambaModel:
         )
         assert len(out.sequences) == 1
         # detok
-        return {'text': [self.tokenizer.decode(out.sequences[0][input_ids.shape[1] :])]}
+        return {'text': [self.tokenizer.decode(out.sequences[0][input_ids.shape[1]:])]}
