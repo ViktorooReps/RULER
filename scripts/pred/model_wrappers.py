@@ -21,10 +21,12 @@ from typing import Dict, List, Optional
 
 class HuggingFaceModel:
     def __init__(self, name_or_path: str, use_flash: bool = True, **generation_kwargs) -> None:
-        from transformers import pipeline
+        from transformers import pipeline, AutoTokenizer
 
         if 'landmark' in name_or_path:
             from llama_mem import LlamaForCausalLM
+
+            self.tokenizer = AutoTokenizer.from_pretrained(name_or_path, trust_remote_code=True)
 
             model = LlamaForCausalLM.from_pretrained(
                 name_or_path,
@@ -47,7 +49,7 @@ class HuggingFaceModel:
                 cache_top_k=generation_kwargs.get('top_k', 5)
             )
         else:
-            from transformers import AutoTokenizer, AutoModelForCausalLM
+            from transformers import AutoModelForCausalLM
 
             self.tokenizer = AutoTokenizer.from_pretrained(name_or_path, trust_remote_code=True)
 
