@@ -16,8 +16,6 @@ TEMPERATURE="0.0" # greedy
 TOP_P="1.0"
 TOP_K="32"
 SEQ_LENGTHS=(
-    5 * 1024
-    4 * 1024
     3 * 1024
     2 * 1024
     1 * 1024
