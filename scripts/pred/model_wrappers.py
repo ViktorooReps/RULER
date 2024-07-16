@@ -73,8 +73,12 @@ class HuggingFaceModel:
                 self.model = AutoModelForCausalLM.from_pretrained(name_or_path, trust_remote_code=True,
                                                                   device_map="auto", torch_dtype=torch.bfloat16, )
 
+        if self.tokenizer.pad_token is None:
+            # add pad token to allow batching
+            # see https://huggingface.co/docs/transformers/main/model_doc/llama2
+            self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+
         self.generation_kwargs = generation_kwargs
-        self.generation_kwargs['pad_token'] = self.tokenizer.pad_token
         self.stop = self.generation_kwargs.pop('stop')
 
     def __call__(self, prompt: str, **kwargs) -> dict:
