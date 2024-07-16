@@ -79,10 +79,6 @@ parser.add_argument("--ssh_key_path", type=str)
 parser.add_argument("--model_name_or_path", type=str, default='gpt-3.5-turbo',
                     help='supported models from OpenAI or HF (provide a key or a local path to the checkpoint)')
 
-# Landmark Attention
-parser.add_argument("--use_flash", type=bool, action='store_true', help='use flash attention for landmark '
-                                                                        'attention (CPU only)')
-
 # Inference
 parser.add_argument("--temperature", type=float, default=1.0)
 parser.add_argument("--top_k", type=int, default=32)
@@ -173,7 +169,7 @@ def get_llm(tokens_to_generate):
         from model_wrappers import HuggingFaceModel
         llm = HuggingFaceModel(
             name_or_path=args.model_name_or_path,
-            use_flash=args.use_flash,
+            use_flash=True,
             do_sample=args.temperature > 0,
             repetition_penalty=1,
             temperature=args.temperature,
