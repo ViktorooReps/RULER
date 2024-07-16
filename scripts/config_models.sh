@@ -33,6 +33,7 @@ MODEL_SELECT() {
             MODEL_PATH="${MODEL_DIR}/llama2_7b"
             MODEL_TEMPLATE_TYPE="base"
             MODEL_FRAMEWORK="hf"
+            TOKENIZER_TYPE="hf"
             ;;
         llama-7b-original)
             ;;
