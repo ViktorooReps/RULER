@@ -27,7 +27,7 @@ GPUS="1" # GPU size for tensor_parallel.
 ROOT_DIR="benchmark_root" # the path that stores generated task samples and model predictions.
 MODEL_DIR="../.." # the path that contains individual model folders from HUggingface.
 ENGINE_DIR="." # the path that contains individual engine folders from TensorRT-LLM.
-BATCH_SIZE=6
+BATCH_SIZE=5
 
 
 # Model and Tokenizer
