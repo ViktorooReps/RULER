@@ -74,6 +74,7 @@ class HuggingFaceModel:
                                                                   device_map="auto", torch_dtype=torch.bfloat16, )
 
         self.generation_kwargs = generation_kwargs
+        self.generation_kwargs['pad_token'] = self.tokenizer.pad_token
         self.stop = self.generation_kwargs.pop('stop')
 
     def __call__(self, prompt: str, **kwargs) -> dict:
