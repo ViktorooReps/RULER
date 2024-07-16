@@ -30,9 +30,10 @@ MODEL_SELECT() {
     
     case $MODEL_NAME in
         llama2-7b-original)
-            MODEL_PATH="llama2_7b"
+            MODEL_PATH="${MODEL_DIR}/llama2_7b"
             MODEL_TEMPLATE_TYPE="base"
             MODEL_FRAMEWORK="hf"
+            ;;
         llama-7b-original)
             ;;
         llama-7b-landmark-attention)
