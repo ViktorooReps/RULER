@@ -242,8 +242,6 @@ def main():
     llm = get_llm(config['tokens_to_generate'])
 
     def get_output(idx_list, index_list, input_list, outputs_list, others_list, truncation_list, length_list):
-        nonlocal llm
-
         while True:
             try:
                 pred_list = llm.process_batch(prompts=input_list)
@@ -289,7 +287,7 @@ def main():
     if len(batch):
         batched_data.append(batch)
 
-    print(len(batched_data), args.batch_size)
+    print(len(data), len(batched_data), args.batch_size)
 
     # setting buffering=1 to force to dump the output after every line, so that we can see intermediate generations
     with open(pred_file, 'at', encoding="utf-8", buffering=1) as fout:
