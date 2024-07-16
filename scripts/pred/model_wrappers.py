@@ -76,27 +76,40 @@ class HuggingFaceModel:
         self.generation_kwargs = generation_kwargs
         self.stop = self.generation_kwargs.pop('stop')
 
-    def __call__(self, prompt: str, **kwargs) -> Dict[str, List[str]]:
+    def __call__(self, prompt: str, **kwargs) -> dict:
+        return self.process_batch([prompt], **kwargs)[0]
+
+    def process_batch(self, prompts: List[str], **kwargs) -> List[dict]:
         if self.pipeline is None:
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+            inputs = self.tokenizer(prompts, return_tensors="pt").to(self.model.device)
             output = self.model.generate(
                 **inputs,
                 **self.generation_kwargs
             )
-            generated_text = self.tokenizer.decode(output[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+            generated_texts = []
+            output_start = inputs.input_ids.shape[1]  # shape: (B, L)
+            for llm_result in output:
+                text = self.tokenizer.decode(llm_result[output_start:], skip_special_tokens=True)
+                generated_texts.append(text)
         else:
-            output = self.pipeline(text_inputs=prompt, **self.generation_kwargs, )
-            assert len(output) == 1
-            generated_text = output[0]["generated_text"]
+            output = self.pipeline(text_inputs=prompts, **self.generation_kwargs, )
+            assert len(output) == len(prompts)
+            generated_texts = [llm_result["generated_text"] for llm_result in output]
 
-        # remove the input form the generated text
-        if generated_text.startswith(prompt):
-            generated_text = generated_text[len(prompt):]
+        results = []
 
-        if self.stop is not None:
-            for s in self.stop:
-                generated_text = generated_text.split(s)[0]
-        return {'text': [generated_text]}
+        for text, prompt in zip(generated_texts, prompts):
+            # remove the input form the generated text
+            if text.startswith(prompt):
+                text = text[len(prompt):]
+
+            if self.stop is not None:
+                for s in self.stop:
+                    text = text.split(s)[0]
+
+            results.append({'text': [text]})
+
+        return results
 
 
 class MambaModel:
@@ -131,3 +144,7 @@ class MambaModel:
         assert len(out.sequences) == 1
         # detok
         return {'text': [self.tokenizer.decode(out.sequences[0][input_ids.shape[1]:])]}
+
+    def process_batch(self, prompts: List[str], **kwargs) -> List[dict]:
+        # FIXME: naive implementation
+        return [self.__call__(prompt, **kwargs) for prompt in prompts]
