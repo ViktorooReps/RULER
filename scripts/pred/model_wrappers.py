@@ -74,9 +74,10 @@ class HuggingFaceModel:
                                                                   device_map="auto", torch_dtype=torch.bfloat16, )
 
         if self.tokenizer.pad_token is None:
-            # add pad token to allow batching
-            # see https://huggingface.co/docs/transformers/main/model_doc/llama2
-            self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+            # add pad token to allow batching (known issue for llama2)
+            self.tokenizer.padding_side = 'left'
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
 
         self.generation_kwargs = generation_kwargs
         self.stop = self.generation_kwargs.pop('stop')
