@@ -163,7 +163,8 @@ def generate_input_output(num_haystack):
                 value=generate_random(args.type_needle_v),
             ) for _ in range(num_haystack)]
 
-            
+        print('Sentences:', len(sentences))
+
         indexes = sorted(random.sample(range(num_haystack), len(needles)), reverse=True)
         for index, element in zip(indexes, needles):
             sentences.insert(index, element)
@@ -185,11 +186,16 @@ def generate_input_output(num_haystack):
         template = template.replace('answers', 'answer')
         type_needle_v = type_needle_v[:-1] # remove "s"
 
+
+    print('Context:', len(context))
+
     input_text = template.format(
         type_needle_v=type_needle_v,
         context=context,
         query=query,
     )
+
+    print('Input text:', len(input_text))
 
     return input_text, answers
 
