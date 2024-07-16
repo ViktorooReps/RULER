@@ -289,6 +289,8 @@ def main():
     if len(batch):
         batched_data.append(batch)
 
+    print(len(batched_data), args.batch_size)
+
     # setting buffering=1 to force to dump the output after every line, so that we can see intermediate generations
     with open(pred_file, 'at', encoding="utf-8", buffering=1) as fout:
         # the data is processed sequentially, so we can store the start and end of current processing window
