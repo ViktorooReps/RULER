@@ -42,7 +42,8 @@ import time
 from tqdm import tqdm
 from pathlib import Path
 import traceback
-from nemo.collections.asr.parts.utils.manifest_utils import read_manifest
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../data"))
+from manifest import read_manifest
 
 SERVER_TYPES = (
     'trtllm',
@@ -52,6 +53,7 @@ SERVER_TYPES = (
     'gemini',
     'hf',
     'mamba',
+    'test'
 )
 
 
@@ -194,7 +196,9 @@ def get_llm(tokens_to_generate):
             stop=args.stop_words,
             max_new_tokens=tokens_to_generate,
         )
-
+    elif args.server_type == 'test':
+        from model_wrappers import TestModel
+        llm = TestModel()
     else:
         raise RuntimeError(f'Unsupported server type {args.server_type}')
 
@@ -234,15 +238,19 @@ def main():
 
     # Load data
     if os.path.exists(pred_file):
-        pred_index = [sample['index'] for sample in read_manifest(pred_file)]
+        pred_index = {sample['index'] for sample in read_manifest(pred_file)}
         data = [sample for sample in read_manifest(task_file) if sample['index'] not in pred_index]
     else:
         data = read_manifest(task_file)
 
-    # Load api
-    llm = get_llm(config['tokens_to_generate'])
+    # Load LLM lazily
+    llm = None
 
     def get_output(idx_list, index_list, input_list, outputs_list, others_list, truncation_list, length_list):
+        nonlocal llm
+        if llm is None:
+            llm = get_llm(config['tokens_to_generate'])
+
         while True:
             try:
                 pred_list = llm.process_batch(prompts=input_list)

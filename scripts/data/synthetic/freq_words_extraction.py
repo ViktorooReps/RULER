@@ -27,7 +27,7 @@ python freq_words_extraction.py   \
     --alpha 2.0 \
     --template "[INST] Read the following coded text and track the frequency of each coded word. Find the three most frequently appeared coded words. {context}\nQuestion: Do not provide any explanation. Please ignore the dots '....'. What are the three most frequently appeared words in the above coded text? [/INST] Answer: According to the coded text above, the three most frequently appeared words are:"
 """
-
+import logging
 import os
 import argparse
 from pathlib import Path
@@ -35,9 +35,9 @@ from tqdm import tqdm
 import random
 import string
 import numpy as np
-from nemo.collections.asr.parts.utils.manifest_utils import read_manifest, write_manifest
 import sys
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")) 
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from manifest import read_manifest, write_manifest
 from tokenizer import select_tokenizer
 from scipy.special import zeta 
 
@@ -145,6 +145,10 @@ def sys_kwext(num_samples: int, max_seq_length: int, incremental: int = 10):
 
 def main():   
     save_file = args.save_dir / f'{args.save_name}' / f'{args.subset}.jsonl'
+    if save_file.exists():
+        logging.warning(f'{save_file} already exists, skipping')
+        return
+
     save_file.parent.mkdir(parents=True, exist_ok=True)
     write_jsons = sys_kwext(num_samples=args.num_samples, max_seq_length=args.max_seq_length, 
                             incremental=10)

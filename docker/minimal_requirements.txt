@@ -1,0 +1,7 @@
+tqdm
+nltk
+html2text
+wonderwords
+pandas
+tenacity
+beautifulsoup4

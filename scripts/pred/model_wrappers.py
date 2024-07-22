@@ -14,9 +14,28 @@
 
 import json
 import logging
+import nltk
 import requests
+import random
 import torch
+
+from nltk.tokenize import word_tokenize
 from typing import Dict, List, Optional
+
+
+class TestModel:
+    def __init__(self):
+        try:
+            nltk.data.find('tokenizers/punkt')
+        except LookupError:
+            nltk.download('punkt')
+
+    def __call__(self, prompt: str, **kwargs) -> Dict[str, List[str]]:
+        tokens = word_tokenize(prompt)
+        return {'text': [random.choice(tokens)]}
+
+    def process_batch(self, prompts: List[str], **kwargs) -> List[dict]:
+        return [self.__call__(prompt, **kwargs) for prompt in prompts]
 
 
 class HuggingFaceModel:

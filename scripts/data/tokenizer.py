@@ -24,6 +24,8 @@ from tenacity import (
 
 
 def select_tokenizer(tokenizer_type, tokenizer_path):
+    if tokenizer_type == 'nltk':
+        return NLTKTokenizer()
     if tokenizer_type == 'nemo':
         return NeMoSentencePieceTokenizer(model_path=tokenizer_path)
     elif tokenizer_type == 'hf':
@@ -34,6 +36,23 @@ def select_tokenizer(tokenizer_type, tokenizer_path):
         return GeminiTokenizer(model_path=tokenizer_path)
     else:
         raise ValueError(f"Unknown tokenizer_type {tokenizer_type}")
+
+
+class NLTKTokenizer:
+    def __init__(self):
+        import nltk
+        try:
+            nltk.data.find('tokenizers/punkt')
+        except LookupError:
+            nltk.download('punkt')
+
+        self.tokenizer = nltk.tokenize.word_tokenize
+
+    def text_to_tokens(self, text: str) -> List[str]:
+        return self.tokenizer(text)
+
+    def tokens_to_text(self, tokens: List[int]) -> str:
+        pass
 
 
 class NeMoSentencePieceTokenizer:

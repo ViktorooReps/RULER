@@ -27,16 +27,16 @@ python common_words_extraction.py   \
     -freq_cw 30 --freq_ucw 3 --num_cw 10 \
     --template "[INST] Below is a numbered list of words. In these words, some appear more often than others. Memorize the ones that appear most often.\n{context}\nQuestion: What are the 10 most common words in the above list? [/INST] Answer: The top 10 words that appear most often in the list are:"
 """
-
+import logging
 import os
 import argparse
 from pathlib import Path
 from tqdm import tqdm
 import random
 import wonderwords
-from nemo.collections.asr.parts.utils.manifest_utils import read_manifest, write_manifest
 import sys
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")) 
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from manifest import read_manifest, write_manifest
 from tokenizer import select_tokenizer
 
 parser = argparse.ArgumentParser()
@@ -156,6 +156,10 @@ def sys_word_pair_random(num_samples: int, max_seq_length: int, save_dir: str, i
 
 def main():
     save_file = args.save_dir / f'{args.save_name}' / f'{args.subset}.jsonl'
+    if save_file.exists():
+        logging.warning(f'{save_file} already exists, skipping')
+        return
+
     save_file.parent.mkdir(parents=True, exist_ok=True)
 
     write_jsons = sys_word_pair_random(num_samples=args.num_samples, max_seq_length=args.max_seq_length, save_dir=args.save_dir)

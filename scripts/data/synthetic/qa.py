@@ -25,6 +25,7 @@ python qa.py \
     --num_samples=10 \
     --template="Answer the question based on the given documents. Only give me the answer and do not output any other words.\n\nThe following are given documents.\n\n{context}\n\nAnswer the question based on the given documents. Only give me the answer and do not output any other words.\n\nQuestion: {query} Answer:"
 """
+import logging
 import os
 import re
 import json
@@ -33,9 +34,9 @@ from pathlib import Path
 from tqdm import tqdm
 import random
 import numpy as np
-from nemo.collections.asr.parts.utils.manifest_utils import read_manifest, write_manifest
 import sys
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")) 
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from manifest import read_manifest, write_manifest
 from tokenizer import select_tokenizer
 
 
@@ -196,12 +197,19 @@ def generate_samples(num_samples: int, max_seq_length: int, save_dir: str, incre
 
 def main():
     save_file = args.save_dir / f'{args.save_name}' / f'{args.subset}.jsonl'
+    if save_file.exists():
+        logging.warning(f'{save_file} already exists, skipping')
+        return
+
     save_file.parent.mkdir(parents=True, exist_ok=True)
+
+    incremental = 10 if args.max_seq_length > 4 * 1024 else 1
 
     write_jsons = generate_samples(
         num_samples=args.num_samples, 
         max_seq_length=args.max_seq_length, 
-        save_dir=args.save_dir
+        save_dir=args.save_dir,
+        incremental=incremental
     )
     
     write_manifest(save_file, write_jsons)

@@ -25,6 +25,7 @@ python niah.py \
     --num_samples=10 \
     --template="Some special magic {type_needle_v} are hidden within the following text. Make sure to memorize it. I will quiz you about the {type_needle_v} afterwards.\n{context}\nWhat are all the special magic {type_needle_v} for {query} mentioned in the provided text? The special magic {type_needle_v} for {query} mentioned in the provided text are"
 """
+import logging
 import os
 import re
 import json
@@ -36,9 +37,9 @@ from pathlib import Path
 from tqdm import tqdm
 import random
 import wonderwords
-from nemo.collections.asr.parts.utils.manifest_utils import read_manifest, write_manifest
 import sys
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")) 
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from manifest import read_manifest, write_manifest
 from tokenizer import select_tokenizer
 from nltk.tokenize import sent_tokenize
 
@@ -256,6 +257,10 @@ def generate_samples(num_samples: int, max_seq_length: int, save_dir: str, incre
 
 def main():
     save_file = args.save_dir / f'{args.save_name}' / f'{args.subset}.jsonl'
+    if save_file.exists():
+        logging.warning(f'{save_file} already exists, skipping')
+        return
+
     save_file.parent.mkdir(parents=True, exist_ok=True)
 
     write_jsons = generate_samples(

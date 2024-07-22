@@ -43,6 +43,13 @@ MODEL_SELECT() {
             MODEL_TEMPLATE_TYPE="meta-chat"
             MODEL_FRAMEWORK="vllm"
             ;;
+        test)
+            MODEL_PATH="."
+            MODEL_TEMPLATE_TYPE="base"
+            MODEL_FRAMEWORK="test"
+            TOKENIZER_PATH="."
+            TOKENIZER_TYPE="nltk"
+            ;;
         gpt-3.5-turbo)
             MODEL_PATH="gpt-3.5-turbo-0125"
             MODEL_TEMPLATE_TYPE="base"

@@ -27,6 +27,7 @@ python variable_tracking.py   \
     --num_chains 1  --num_hops 4 \
     --template "[INST] Memorize and track the chain(s) of variable assignment hidden in the following text.\n\n{context}\nQuestion: Find all variables that are assigned the value {query} in the text above. [/INST] Answer: According to the chain(s) of variable assignment in the text above, {num_v} variables are assgined the value {query}, they are: "
 """
+import logging
 import os
 import argparse
 from pathlib import Path
@@ -34,10 +35,11 @@ from tqdm import tqdm
 import random
 import string
 from constants import TASKS
-from nemo.collections.asr.parts.utils.manifest_utils import read_manifest, write_manifest
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")) 
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+from manifest import read_manifest, write_manifest
 from tokenizer import select_tokenizer
 import numpy as np
 
@@ -66,7 +68,7 @@ np.random.seed(args.random_seed)
 TOKENIZER = select_tokenizer(args.tokenizer_type, args.tokenizer_path)
 
 def generate_chains(num_chains, num_hops, is_icl=False):
-    
+
     vars_all = []
     k = 5 if not is_icl else 3
     num_hops = num_hops if not is_icl else min(10, num_hops)
@@ -84,7 +86,7 @@ def generate_chains(num_chains, num_hops, is_icl=False):
             this_chain.append(f"VAR {this_vars[j+1]} = VAR {this_vars[j]} ")
         chains_ret.append(this_chain)
     return vars_ret, chains_ret
-    
+
 def generate_input_output(num_noises, num_chains, num_hops, is_icl=False):
 
     vars, chains = generate_chains(num_chains, num_hops, is_icl=is_icl)
@@ -128,23 +130,23 @@ def generate_input_output(num_noises, num_chains, num_hops, is_icl=False):
     return input_text, vars[0]
 
 
-def sys_vartrack_w_noise_random(num_samples: int, max_seq_length: int, incremental: int = 10, 
+def sys_vartrack_w_noise_random(num_samples: int, max_seq_length: int, incremental: int = 10,
                                 num_chains: int = 1, num_hops: int = 4,
                                 add_fewshot: bool = True,
                                 icl_example: str = None):
     write_jsons = []
     tokens_to_generate = args.tokens_to_generate
-    
+
     # Find the perfect num_noises
     num_noises = incremental
-        
+
     total_tokens = 0  # Track the total tokens generated for this example
     example_tokens = 0
     if add_fewshot and (icl_example is not None):
         icl_example_out = ' '.join(icl_example['outputs'])
         icl_example = icl_example['input'] + " " + icl_example_out + '\n\n'
-        example_tokens = len(TOKENIZER.text_to_tokens(icl_example)) 
-        
+        example_tokens = len(TOKENIZER.text_to_tokens(icl_example))
+
     while total_tokens + tokens_to_generate + example_tokens < max_seq_length :
         input_text, answer = generate_input_output(num_noises, num_chains, num_hops, is_icl=add_fewshot & (icl_example is None))
         # Calculate the number of tokens in the example
@@ -155,7 +157,7 @@ def sys_vartrack_w_noise_random(num_samples: int, max_seq_length: int, increment
             break
         num_noises += incremental
     print('Num noises:', num_noises)
-    
+
     # Generate samples
     for index in tqdm(range(num_samples)):
         used_noises = num_noises
@@ -175,7 +177,7 @@ def sys_vartrack_w_noise_random(num_samples: int, max_seq_length: int, increment
             input_text = input_text[:cutoff] + ' ' + icl_example + '\n\n' + input_text[cutoff:]
         if args.remove_newline_tab:
             input_text = ' '.join(input_text.replace('\n', ' ').replace('\t', ' ').strip().split())
-        
+
         formatted_output = {
             'index': index,
             "input": input_text,
@@ -187,21 +189,25 @@ def sys_vartrack_w_noise_random(num_samples: int, max_seq_length: int, increment
     return write_jsons
 
 
-def main():   
+def main():
     save_file = args.save_dir / f'{args.save_name}' / f'{args.subset}.jsonl'
+    if save_file.exists():
+        logging.warning(f'{save_file} already exists, skipping')
+        return
+
     save_file.parent.mkdir(parents=True, exist_ok=True)
 
-    icl_example = sys_vartrack_w_noise_random(num_samples=1, 
-                                              max_seq_length=500, 
+    icl_example = sys_vartrack_w_noise_random(num_samples=1,
+                                              max_seq_length=500,
                                               incremental=5,
-                                              num_chains=args.num_chains, 
+                                              num_chains=args.num_chains,
                                               num_hops=args.num_hops)[0]
     write_jsons = sys_vartrack_w_noise_random(num_samples=args.num_samples,
-                                              max_seq_length=args.max_seq_length, 
+                                              max_seq_length=args.max_seq_length,
                                               num_chains=args.num_chains,
                                               num_hops=args.num_hops,
                                               icl_example=icl_example)
-    
+
     write_manifest(save_file, write_jsons)
 
 if __name__=="__main__":
