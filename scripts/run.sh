@@ -25,9 +25,10 @@ fi
 # Root Directories
 GPUS="1" # GPU size for tensor_parallel.
 ROOT_DIR="benchmark_root" # the path that stores generated task samples and model predictions.
-MODEL_DIR=".." # the path that contains individual model folders from HUggingface.
+MODEL_DIR="../.." # the path that contains individual model folders from HUggingface.
+MODEL_REVISION="main" # "refs/pr/4" # model revision on huggingface
 ENGINE_DIR="." # the path that contains individual engine folders from TensorRT-LLM.
-BATCH_SIZE=5
+BATCH_SIZE=8
 
 
 # Model and Tokenizer
@@ -95,7 +96,7 @@ for MAX_SEQ_LENGTH in "${SEQ_LENGTHS[@]}"; do
     mkdir -p ${PRED_DIR}
     
     for TASK in "${TASKS[@]}"; do
-        python data/prepare.py \
+        prepare_command="python data/prepare.py \
             --save_dir ${DATA_DIR} \
             --benchmark ${BENCHMARK} \
             --task ${TASK} \
@@ -104,26 +105,34 @@ for MAX_SEQ_LENGTH in "${SEQ_LENGTHS[@]}"; do
             --max_seq_length ${MAX_SEQ_LENGTH} \
             --model_template_type ${MODEL_TEMPLATE_TYPE} \
             --num_samples ${NUM_SAMPLES} \
-            ${REMOVE_NEWLINE_TAB}
+            ${REMOVE_NEWLINE_TAB}"
+        
+        echo "Running: $prepare_command"
+        eval $prepare_command
         
         start_time=$(date +%s)
-        python pred/call_api.py \
+        
+        pred_command="python pred/call_api.py \
             --data_dir ${DATA_DIR} \
             --save_dir ${PRED_DIR} \
             --benchmark ${BENCHMARK} \
             --task ${TASK} \
             --server_type ${MODEL_FRAMEWORK} \
             --model_name_or_path ${MODEL_PATH} \
+            --revision ${MODEL_REVISION} \
             --temperature ${TEMPERATURE} \
             --top_k ${TOP_K} \
             --top_p ${TOP_P} \
             --batch_size ${BATCH_SIZE} \
-            ${STOP_WORDS}
+            ${STOP_WORDS}"
+    
+        echo "Running: $pred_command"
+        eval $pred_command
+        
         end_time=$(date +%s)
         time_diff=$((end_time - start_time))
         total_time=$((total_time + time_diff))
     done
-    
     python eval/evaluate.py \
         --data_dir ${PRED_DIR} \
         --benchmark ${BENCHMARK}

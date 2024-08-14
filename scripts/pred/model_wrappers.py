@@ -39,58 +39,45 @@ class TestModel:
 
 
 class HuggingFaceModel:
-    def __init__(self, name_or_path: str, use_flash: bool = True, **generation_kwargs) -> None:
-        from transformers import pipeline, AutoTokenizer
+    def __init__(self, name_or_path: str, revision: str, **generation_kwargs) -> None:
+        from transformers import pipeline, AutoModelForCausalLM
 
-        if 'landmark' in name_or_path:
-            from llama_mem import LlamaForCausalLM
+        self.setup_tokenizer(name_or_path, revision=revision, padding_side='left', truncation=True)
 
-            self.tokenizer = AutoTokenizer.from_pretrained(name_or_path, trust_remote_code=True)
+        self.generation_kwargs = generation_kwargs
+        self.stop = self.generation_kwargs.pop('stop') + [self.tokenizer.eos_token]
 
-            model = LlamaForCausalLM.from_pretrained(
-                name_or_path,
-                cache_dir='la_cache',
+        if 'Yarn-Llama' in name_or_path:
+            model_kwargs = None
+        else:
+            model_kwargs = {"attn_implementation": "flash_attention_2"}
+
+        print(f'Model init: {name_or_path}')
+
+        try:
+            self.pipeline = pipeline(
+                "text-generation",
+                model=name_or_path,
+                tokenizer=self.tokenizer,
+                trust_remote_code=True,
+                device_map="auto",
+                torch_dtype=torch.bfloat16,
+                model_kwargs=model_kwargs,
+            )
+        except Exception as e:
+            logging.warning('Failed to create the pipeline!', exc_info=e)
+            self.pipeline = None
+            self.model = AutoModelForCausalLM.from_pretrained(
+                name_or_path, 
+                trust_remote_code=True,
+                device_map="auto", 
                 torch_dtype=torch.bfloat16
             )
 
-            model.to('cpu')
+    def setup_tokenizer(self, name_or_path: str, **tokenizer_kwargs):
+        from transformers import AutoTokenizer
 
-            mem_id = self.tokenizer.convert_tokens_to_ids("<landmark>")
-            model.set_mem_id(mem_id)
-
-            # using flash for inference is only implemented for when offloading kv to cpu
-            self.pipeline = pipeline(
-                "text-generation",
-                model=model,
-                tokenizer=self.tokenizer,
-                device=model.device,
-                offload_cache_to_cpu=use_flash, use_flash=use_flash,
-                cache_top_k=generation_kwargs.get('top_k', 5)
-            )
-        else:
-            from transformers import AutoModelForCausalLM
-
-            self.tokenizer = AutoTokenizer.from_pretrained(name_or_path, trust_remote_code=True)
-
-            if 'Yarn-Llama' in name_or_path:
-                model_kwargs = None
-            else:
-                model_kwargs = {"attn_implementation": "flash_attention_2"}
-
-            try:
-                self.pipeline = pipeline(
-                    "text-generation",
-                    model=name_or_path,
-                    tokenizer=self.tokenizer,
-                    trust_remote_code=True,
-                    device_map="auto",
-                    torch_dtype=torch.bfloat16,
-                    model_kwargs=model_kwargs,
-                )
-            except:
-                self.pipeline = None
-                self.model = AutoModelForCausalLM.from_pretrained(name_or_path, trust_remote_code=True,
-                                                                  device_map="auto", torch_dtype=torch.bfloat16, )
+        self.tokenizer = AutoTokenizer.from_pretrained(name_or_path, **tokenizer_kwargs)
 
         if self.tokenizer.pad_token is None:
             # add pad token to allow batching (known issue for llama2)
@@ -98,9 +85,7 @@ class HuggingFaceModel:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
 
-        self.generation_kwargs = generation_kwargs
-        self.stop = self.generation_kwargs.pop('stop')
-
+        
     def __call__(self, prompt: str, **kwargs) -> dict:
         return self.process_batch([prompt], **kwargs)[0]
 
@@ -117,7 +102,7 @@ class HuggingFaceModel:
                 text = self.tokenizer.decode(llm_result[output_start:], skip_special_tokens=True)
                 generated_texts.append(text)
         else:
-            output = self.pipeline(text_inputs=prompts, **self.generation_kwargs, )
+            output = self.pipeline(text_inputs=prompts, **self.generation_kwargs)
             assert len(output) == len(prompts)
             generated_texts = [llm_result[0]["generated_text"] for llm_result in output]
 
@@ -135,6 +120,46 @@ class HuggingFaceModel:
             results.append({'text': [text]})
 
         return results
+    
+
+class LandmarkAttentionModel(HuggingFaceModel):
+    def __init__(self, name_or_path: str, revision: str, **generation_kwargs) -> None:
+        from llama_mem import LlamaForCausalLM
+        from transformers import pipeline
+
+        self.setup_tokenizer(name_or_path, revision=revision, truncation=False, padding_side="right", padding=True, use_fast=False)
+
+        self.generation_kwargs = generation_kwargs
+        self.stop = self.generation_kwargs.pop('stop') + [self.tokenizer.eos_token]
+
+        model = LlamaForCausalLM.from_pretrained(
+            name_or_path, 
+            revision=revision, 
+            torch_dtype=torch.bfloat16, 
+            device_map="auto"
+        )
+
+        if torch.cuda.device_count() > 1: 
+            from accelerate import load_checkpoint_and_dispatch
+
+            model = load_checkpoint_and_dispatch(model, checkpoint=name_or_path, device_map="auto")
+
+        mem_id = self.tokenizer.convert_tokens_to_ids("<landmark>")
+        model.set_mem_id(mem_id)
+
+        # using flash for inference is only implemented for when offloading kv to cpu
+        self.pipeline = pipeline(
+            "text-generation",
+            model=model,
+            device_map="auto",
+            tokenizer=self.tokenizer,
+            offload_cache_to_cpu=generation_kwargs.get('offload_cache_to_cpu', False),
+            use_flash=generation_kwargs.get('use_flash', True),
+            cache_top_k=generation_kwargs.get('cache_top_k', 5)
+        )
+
+        print(f'Generation kwargs: {generation_kwargs}')
+
 
 
 class MambaModel:

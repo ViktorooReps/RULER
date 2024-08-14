@@ -31,6 +31,7 @@ prediction jsonl:
 """
 
 import argparse
+import enum
 import json
 import yaml
 import os
@@ -45,16 +46,24 @@ import traceback
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../data"))
 from manifest import read_manifest
 
-SERVER_TYPES = (
-    'trtllm',
-    'vllm',
-    'sglang',
-    'openai',
-    'gemini',
-    'hf',
-    'mamba',
-    'test'
-)
+
+class ServerTypes(enum.Enum):
+    TRTLLM = 'trtllm'
+    VLLM = 'vllm'
+    SGLANG = 'sglang'
+    OPENAI = 'openai'
+    GEMINI = 'gemini'
+
+
+class ModelTypes(enum.Enum):
+    HF = 'hf'
+    MAMBA = 'mamba'
+    TEST = 'test'
+    LANDMARK_ATTENTION = 'landmark-attention'
+
+
+SERVER_TYPES = [t.value for t in ServerTypes]
+MODEL_TYPES = [t.value for t in ModelTypes]
 
 
 class ServerAction(argparse.Action):
@@ -73,13 +82,14 @@ parser.add_argument("--chunk_idx", type=int, default=0, help='index of current s
 parser.add_argument("--chunk_amount", type=int, default=1, help='size of split chunk')
 
 # Server
-parser.add_argument("--server_type", default='nemo', action=ServerAction, choices=SERVER_TYPES)
+parser.add_argument("--server_type", default='nemo', action=ServerAction, choices=SERVER_TYPES + MODEL_TYPES)
 parser.add_argument("--server_host", type=str, default='127.0.0.1')
 parser.add_argument("--server_port", type=str, default='5000')
 parser.add_argument("--ssh_server", type=str)
 parser.add_argument("--ssh_key_path", type=str)
 parser.add_argument("--model_name_or_path", type=str, default='gpt-3.5-turbo',
-                    help='supported models from OpenAI or HF (provide a key or a local path to the checkpoint)')
+                    help='supported models from OpenAI or HF (provide a key or a local path to the checkpoint)') 
+parser.add_argument("--revision", type=str, default="refs/main")
 
 # Inference
 parser.add_argument("--temperature", type=float, default=1.0)
@@ -93,12 +103,24 @@ parser.add_argument("--batch_size", type=int, default=1)
 
 args = parser.parse_args()
 args.stop_words = list(filter(None, args.stop_words.split(',')))
-if args.server_type == 'hf' or args.server_type == 'gemini':
+
+# do not use multithreading if the model is local
+if args.server_type in MODEL_TYPES:
     args.threads = 1
+    llm_type = ModelTypes(args.server_type)
+    print(f'Deploying model {llm_type} locally, --threads argument is ignored')
+elif args.server_type in SERVER_TYPES:
+    llm_type = ServerTypes(args.server_type)
+    print(f'Initializing {llm_type} LLM client')
+else:
+    raise RuntimeError(f'Unsupported server type {args.server_type}')
+
+if not len(args.revision):
+    args.revision = None
 
 
 def get_llm(tokens_to_generate):
-    if args.server_type == 'trtllm':
+    if llm_type == ServerTypes.TRTLLM:
         from client_wrappers import TRTLLMClient
         llm = TRTLLMClient(
             server_host=args.server_host,
@@ -114,7 +136,7 @@ def get_llm(tokens_to_generate):
             max_attention_window_size=args.sliding_window_size,
         )
 
-    elif args.server_type == 'vllm':
+    elif llm_type == ServerTypes.VLLM:
         from client_wrappers import VLLMClient
         llm = VLLMClient(
             server_host=args.server_host,
@@ -129,7 +151,7 @@ def get_llm(tokens_to_generate):
             tokens_to_generate=tokens_to_generate,
         )
 
-    elif args.server_type == 'sglang':
+    elif llm_type == ServerTypes.SGLANG:
         from client_wrappers import SGLClient
         llm = SGLClient(
             server_host=args.server_host,
@@ -144,7 +166,7 @@ def get_llm(tokens_to_generate):
             tokens_to_generate=tokens_to_generate,
         )
 
-    elif args.server_type == 'openai':
+    elif llm_type == ServerTypes.OPENAI:
         from client_wrappers import OpenAIClient
         llm = OpenAIClient(
             model_name=args.model_name_or_path,
@@ -156,7 +178,7 @@ def get_llm(tokens_to_generate):
             tokens_to_generate=tokens_to_generate,
         )
 
-    elif args.server_type == 'gemini':
+    elif llm_type == ServerTypes.GEMINI:
         from client_wrappers import GeminiClient
         llm = GeminiClient(
             model_name=args.model_name_or_path,
@@ -168,22 +190,41 @@ def get_llm(tokens_to_generate):
             tokens_to_generate=tokens_to_generate,
         )
 
-    elif args.server_type == 'hf':
+    elif llm_type == ModelTypes.HF:
         from model_wrappers import HuggingFaceModel
         llm = HuggingFaceModel(
             name_or_path=args.model_name_or_path,
-            use_flash=True,
+            revision=args.revision,
             do_sample=args.temperature > 0,
             repetition_penalty=1,
-            temperature=args.temperature,
-            top_k=args.top_k,
+            temperature=args.temperature if args.temperature > 0 else None,
+            top_k=args.top_k if args.temperature > 0 else None,
+            top_p=args.top_p,
+            stop=args.stop_words,
+            max_new_tokens=tokens_to_generate,
+            batch_size=args.batch_size
+        )
+    
+    elif llm_type == ModelTypes.LANDMARK_ATTENTION:
+        from model_wrappers import LandmarkAttentionModel
+        llm = LandmarkAttentionModel(
+            name_or_path=args.model_name_or_path,
+            revision=args.revision,
+            do_sample=args.temperature > 0,
+            repetition_penalty=1,
+            temperature=args.temperature if args.temperature > 0 else None,
+            top_k=args.top_k if args.temperature > 0 else None,
             top_p=args.top_p,
             stop=args.stop_words,
             max_new_tokens=tokens_to_generate,
             batch_size=args.batch_size,
+            use_flash=True, 
+            offload_cache_to_cpu=False, 
+            use_cache=True,
+            aggregate="max_over_tokens"
         )
 
-    elif args.server_type == 'mamba':
+    elif llm_type == ModelTypes.MAMBA:
         from model_wrappers import MambaModel
         # mamba uses its own generation function, do not pass in do_sample
         # https://github.com/state-spaces/mamba/blob/009bec5ee37f586844a3fc89c040a9c1a9d8badf/mamba_ssm/utils/generation.py#L121
@@ -196,7 +237,7 @@ def get_llm(tokens_to_generate):
             stop=args.stop_words,
             max_new_tokens=tokens_to_generate,
         )
-    elif args.server_type == 'test':
+    elif llm_type == ModelTypes.TEST:
         from model_wrappers import TestModel
         llm = TestModel()
     else:
@@ -243,8 +284,12 @@ def main():
     else:
         data = read_manifest(task_file)
 
-    # Load LLM lazily
-    llm = None
+    
+    if not len(data):
+        print(f'Skipping task, file {pred_file} is complete')
+
+
+    llm = get_llm(config['tokens_to_generate'])
 
     def get_output(idx_list, index_list, input_list, outputs_list, others_list, truncation_list, length_list):
         nonlocal llm
@@ -282,6 +327,11 @@ def main():
     threads = []
     outputs_parallel = [{} for _ in range(len(data))]
 
+    def dump_outputs(start_idx: int, end_idx: int):
+        for idx in range(start_idx, end_idx + 1):
+            if len(outputs_parallel[idx]) > 0:
+                fout.write(json.dumps(outputs_parallel[idx]) + '\n')
+
     batched_data = []
     batch = []
     for idx, data_point in enumerate(data):
@@ -305,18 +355,26 @@ def main():
             idx_list = [data_point['idx'] for data_point in batch]
             end_idx = idx_list[-1]  # the data in a batch is ordered
 
-            thread = threading.Thread(
-                target=get_output,
-                kwargs=dict(
-                    idx_list=idx_list,
-                    index_list=[data_point['index'] for data_point in batch],
-                    input_list=[data_point['input'] for data_point in batch],
-                    outputs_list=[data_point['outputs'] for data_point in batch],
-                    others_list=[data_point.get('others', {}) for data_point in batch],
-                    truncation_list=[data_point.get('truncation', -1) for data_point in batch],
-                    length_list=[data_point.get('length', -1) for data_point in batch],
-                ),
+            kwargs=dict(
+                idx_list=idx_list,
+                index_list=[data_point['index'] for data_point in batch],
+                input_list=[data_point['input'] for data_point in batch],
+                outputs_list=[data_point['outputs'] for data_point in batch],
+                others_list=[data_point.get('others', {}) for data_point in batch],
+                truncation_list=[data_point.get('truncation', -1) for data_point in batch],
+                length_list=[data_point.get('length', -1) for data_point in batch],
             )
+
+            if args.threads <= 1:
+                # do not spawn any new threads
+                get_output(**kwargs)
+
+                dump_outputs(start_idx, end_idx)
+
+                start_idx = end_idx + 1
+                continue
+
+            thread = threading.Thread(target=get_output, kwargs=kwargs)
             thread.start()
             threads.append(thread)
 
@@ -328,9 +386,7 @@ def main():
                 threads = []
 
                 # dump the results in current processing window on disk
-                for idx in range(start_idx, end_idx + 1):
-                    if len(outputs_parallel[idx]) > 0:
-                        fout.write(json.dumps(outputs_parallel[idx]) + '\n')
+                dump_outputs(start_idx, end_idx)
 
                 start_idx = end_idx + 1
 

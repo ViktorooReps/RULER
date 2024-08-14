@@ -16,10 +16,7 @@ TEMPERATURE="0.0" # greedy
 TOP_P="1.0"
 TOP_K="32"
 SEQ_LENGTHS=(
-    4096
-    3072
     2048
-    1024
 )
 
 MODEL_SELECT() {
@@ -35,8 +32,18 @@ MODEL_SELECT() {
             TOKENIZER_TYPE="hf"
             ;;
         llama-7b-original)
+            MODEL_PATH="huggyllama/llama-7b"
+            TOKENIZER_PATH="${MODEL_PATH}"
+            MODEL_TEMPLATE_TYPE="base"
+            MODEL_FRAMEWORK="hf"
+            TOKENIZER_TYPE="hf"
             ;;
         llama-7b-landmark-attention)
+            MODEL_PATH="/mloscratch/homes/mohtasha/llm/llama-redpajama-mem-8000-with-mem-triton-new-format"
+            TOKENIZER_PATH="${MODEL_PATH}"
+            MODEL_TEMPLATE_TYPE="base"
+            MODEL_FRAMEWORK="landmark-attention"
+            TOKENIZER_TYPE="hf"
             ;;
         llama2-7b-chat)
             MODEL_PATH="${MODEL_DIR}/llama2-7b-chat-hf"
